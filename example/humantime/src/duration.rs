@@ -2,6 +2,7 @@ use std::error::Error as StdError;
 use std::fmt;
 use std::str::Chars;
 use std::time::Duration;
+
 /// Error parsing human-friendly duration
 #[derive(Debug, PartialEq, Clone)]
 pub enum Error {
@@ -46,16 +47,19 @@ pub enum Error {
     /// The value was an empty string (or consists only whitespace)
     Empty,
 }
+
 impl StdError for Error {}
+
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::InvalidCharacter(offset) => {
-                write!(f, "invalid character at {}", offset)
-            }
+            Error::InvalidCharacter(offset) => write!(f, "invalid character at {}", offset),
             Error::NumberExpected(offset) => write!(f, "expected number at {}", offset),
             Error::UnknownUnit { unit, value, .. } if unit.is_empty() => {
-                write!(f, "time unit needed, for example {0}sec or {0}ms", value,)
+                write!(f,
+                    "time unit needed, for example {0}sec or {0}ms",
+                    value,
+                )
             }
             Error::UnknownUnit { unit, .. } => {
                 write!(
@@ -71,13 +75,16 @@ impl fmt::Display for Error {
         }
     }
 }
+
 /// A wrapper type that allows you to Display a Duration
 #[derive(Debug, Clone)]
 pub struct FormattedDuration(Duration);
+
 trait OverflowOp: Sized {
     fn mul(self, other: Self) -> Result<Self, Error>;
     fn add(self, other: Self) -> Result<Self, Error>;
 }
+
 impl OverflowOp for u64 {
     fn mul(self, other: Self) -> Result<Self, Error> {
         self.checked_mul(other).ok_or(Error::NumberOverflow)
@@ -86,15 +93,18 @@ impl OverflowOp for u64 {
         self.checked_add(other).ok_or(Error::NumberOverflow)
     }
 }
+
 struct Parser<'a> {
     iter: Chars<'a>,
     src: &'a str,
     current: (u64, u64),
 }
+
 impl<'a> Parser<'a> {
     fn off(&self) -> usize {
         self.src.len() - self.iter.as_str().len()
     }
+
     fn parse_first_char(&mut self) -> Result<Option<u64>, Error> {
         let off = self.off();
         for c in self.iter.by_ref() {
@@ -110,22 +120,24 @@ impl<'a> Parser<'a> {
         }
         Ok(None)
     }
-    fn parse_unit(&mut self, n: u64, start: usize, end: usize) -> Result<(), Error> {
+    fn parse_unit(&mut self, n: u64, start: usize, end: usize)
+        -> Result<(), Error>
+    {
         let (mut sec, nsec) = match &self.src[start..end] {
             "nanos" | "nsec" | "ns" => (0u64, n),
             "usec" | "us" => (0u64, n.mul(1000)?),
             "millis" | "msec" | "ms" => (0u64, n.mul(1_000_000)?),
             "seconds" | "second" | "secs" | "sec" | "s" => (n, 0),
-            "minutes" | "minute" | "min" | "mins" | "m" => (n.mul(60)?, 0),
+            "minutes" | "minute" | "min" | "mins" | "m"
+            => (n.mul(60)?, 0),
             "hours" | "hour" | "hr" | "hrs" | "h" => (n.mul(3600)?, 0),
             "days" | "day" | "d" => (n.mul(86400)?, 0),
-            "weeks" | "week" | "w" => (n.mul(86400 * 7)?, 0),
-            "months" | "month" | "M" => (n.mul(2_630_016)?, 0),
-            "years" | "year" | "y" => (n.mul(31_557_600)?, 0),
+            "weeks" | "week" | "w" => (n.mul(86400*7)?, 0),
+            "months" | "month" | "M" => (n.mul(2_630_016)?, 0), // 30.44d
+            "years" | "year" | "y" => (n.mul(31_557_600)?, 0), // 365.25d
             _ => {
                 return Err(Error::UnknownUnit {
-                    start,
-                    end,
+                    start, end,
                     unit: self.src[start..end].to_string(),
                     value: n,
                 });
@@ -140,6 +152,7 @@ impl<'a> Parser<'a> {
         self.current = (sec, nsec);
         Ok(())
     }
+
     fn parse(mut self) -> Result<Duration, Error> {
         let mut n = self.parse_first_char()?.ok_or(Error::Empty)?;
         'outer: loop {
@@ -147,8 +160,7 @@ impl<'a> Parser<'a> {
             while let Some(c) = self.iter.next() {
                 match c {
                     '0'..='9' => {
-                        n = n
-                            .checked_mul(10)
+                        n = n.checked_mul(10)
                             .and_then(|x| x.checked_add(c as u64 - '0' as u64))
                             .ok_or(Error::NumberOverflow)?;
                     }
@@ -182,11 +194,14 @@ impl<'a> Parser<'a> {
             self.parse_unit(n, start, off)?;
             n = match self.parse_first_char()? {
                 Some(n) => n,
-                None => return Ok(Duration::new(self.current.0, self.current.1 as u32)),
+                None => return Ok(
+                    Duration::new(self.current.0, self.current.1 as u32)),
             };
         }
     }
+
 }
+
 /// Parse duration object `1hour 12min 5s`
 ///
 /// The duration object is a concatenation of time spans. Where each time
@@ -217,9 +232,9 @@ pub fn parse_duration(s: &str) -> Result<Duration, Error> {
         iter: s.chars(),
         src: s,
         current: (0, 0),
-    }
-        .parse()
+    }.parse()
 }
+
 /// Formats duration into a human-readable string
 ///
 /// Note: this format is guaranteed to have same value when using
@@ -240,12 +255,11 @@ pub fn parse_duration(s: &str) -> Result<Duration, Error> {
 pub fn format_duration(val: Duration) -> FormattedDuration {
     FormattedDuration(val)
 }
-fn item_plural(
-    f: &mut fmt::Formatter,
-    started: &mut bool,
-    name: &str,
-    value: u64,
-) -> fmt::Result {
+
+fn item_plural(f: &mut fmt::Formatter, started: &mut bool,
+    name: &str, value: u64)
+    -> fmt::Result
+{
     if value > 0 {
         if *started {
             f.write_str(" ")?;
@@ -258,12 +272,9 @@ fn item_plural(
     }
     Ok(())
 }
-fn item(
-    f: &mut fmt::Formatter,
-    started: &mut bool,
-    name: &str,
-    value: u32,
-) -> fmt::Result {
+fn item(f: &mut fmt::Formatter, started: &mut bool, name: &str, value: u32)
+    -> fmt::Result
+{
     if value > 0 {
         if *started {
             f.write_str(" ")?;
@@ -273,32 +284,38 @@ fn item(
     }
     Ok(())
 }
+
 impl FormattedDuration {
     /// Returns a reference to the [`Duration`][] that is being formatted.
     pub fn get_ref(&self) -> &Duration {
         &self.0
     }
 }
+
 impl fmt::Display for FormattedDuration {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let secs = self.0.as_secs();
         let nanos = self.0.subsec_nanos();
+
         if secs == 0 && nanos == 0 {
             f.write_str("0s")?;
             return Ok(());
         }
-        let years = secs / 31_557_600;
+
+        let years = secs / 31_557_600;  // 365.25d
         let ydays = secs % 31_557_600;
-        let months = ydays / 2_630_016;
+        let months = ydays / 2_630_016;  // 30.44d
         let mdays = ydays % 2_630_016;
         let days = mdays / 86400;
         let day_secs = mdays % 86400;
         let hours = day_secs / 3600;
         let minutes = day_secs % 3600 / 60;
         let seconds = day_secs % 60;
+
         let millis = nanos / 1_000_000;
         let micros = nanos / 1000 % 1000;
         let nanosec = nanos % 1000;
+
         let started = &mut false;
         item_plural(f, started, "year", years)?;
         item_plural(f, started, "month", months)?;
@@ -312,12 +329,16 @@ impl fmt::Display for FormattedDuration {
         Ok(())
     }
 }
+
 #[cfg(test)]
 mod test {
     use std::time::Duration;
+
     use rand::Rng;
+
     use super::{parse_duration, format_duration};
     use super::Error;
+
     #[test]
     #[allow(clippy::cognitive_complexity)]
     fn test_units() {
@@ -351,191 +372,85 @@ mod test {
         assert_eq!(parse_duration("7weeks"), Ok(Duration::new(4_233_600, 0)));
         assert_eq!(parse_duration("52w"), Ok(Duration::new(31_449_600, 0)));
         assert_eq!(parse_duration("1month"), Ok(Duration::new(2_630_016, 0)));
-        assert_eq!(parse_duration("3months"), Ok(Duration::new(3 * 2_630_016, 0)));
+        assert_eq!(parse_duration("3months"), Ok(Duration::new(3*2_630_016, 0)));
         assert_eq!(parse_duration("12M"), Ok(Duration::new(31_560_192, 0)));
         assert_eq!(parse_duration("1year"), Ok(Duration::new(31_557_600, 0)));
-        assert_eq!(parse_duration("7years"), Ok(Duration::new(7 * 31_557_600, 0)));
+        assert_eq!(parse_duration("7years"), Ok(Duration::new(7*31_557_600, 0)));
         assert_eq!(parse_duration("17y"), Ok(Duration::new(536_479_200, 0)));
     }
+
     #[test]
     fn test_combo() {
         assert_eq!(parse_duration("20 min 17 nsec "), Ok(Duration::new(1200, 17)));
         assert_eq!(parse_duration("2h 15m"), Ok(Duration::new(8100, 0)));
     }
+
     #[test]
     fn all_86400_seconds() {
-        for second in 0..86400 {
+        for second in 0..86400 {  // scan leap year and non-leap year
             let d = Duration::new(second, 0);
-            assert_eq!(d, parse_duration(& format_duration(d).to_string()).unwrap());
+            assert_eq!(d,
+                parse_duration(&format_duration(d).to_string()).unwrap());
         }
     }
+
     #[test]
     fn random_second() {
         for _ in 0..10000 {
             let sec = rand::thread_rng().gen_range(0, 253_370_764_800);
             let d = Duration::new(sec, 0);
-            assert_eq!(d, parse_duration(& format_duration(d).to_string()).unwrap());
+            assert_eq!(d,
+                parse_duration(&format_duration(d).to_string()).unwrap());
         }
     }
+
     #[test]
     fn random_any() {
         for _ in 0..10000 {
             let sec = rand::thread_rng().gen_range(0, 253_370_764_800);
             let nanos = rand::thread_rng().gen_range(0, 1_000_000_000);
             let d = Duration::new(sec, nanos);
-            assert_eq!(d, parse_duration(& format_duration(d).to_string()).unwrap());
+            assert_eq!(d,
+                parse_duration(&format_duration(d).to_string()).unwrap());
         }
     }
+
     #[test]
     fn test_overlow() {
-        assert_eq!(
-            parse_duration("100000000000000000000ns"), Err(Error::NumberOverflow)
-        );
-        assert_eq!(parse_duration("100000000000000000us"), Err(Error::NumberOverflow));
-        assert_eq!(parse_duration("100000000000000ms"), Err(Error::NumberOverflow));
-        assert_eq!(parse_duration("100000000000000000000s"), Err(Error::NumberOverflow));
-        assert_eq!(parse_duration("10000000000000000000m"), Err(Error::NumberOverflow));
-        assert_eq!(parse_duration("1000000000000000000h"), Err(Error::NumberOverflow));
-        assert_eq!(parse_duration("100000000000000000d"), Err(Error::NumberOverflow));
-        assert_eq!(parse_duration("10000000000000000w"), Err(Error::NumberOverflow));
-        assert_eq!(parse_duration("1000000000000000M"), Err(Error::NumberOverflow));
-        assert_eq!(parse_duration("10000000000000y"), Err(Error::NumberOverflow));
+        // Overflow on subseconds is earlier because of how we do conversion
+        // we could fix it, but I don't see any good reason for this
+        assert_eq!(parse_duration("100000000000000000000ns"),
+            Err(Error::NumberOverflow));
+        assert_eq!(parse_duration("100000000000000000us"),
+            Err(Error::NumberOverflow));
+        assert_eq!(parse_duration("100000000000000ms"),
+            Err(Error::NumberOverflow));
+
+        assert_eq!(parse_duration("100000000000000000000s"),
+            Err(Error::NumberOverflow));
+        assert_eq!(parse_duration("10000000000000000000m"),
+            Err(Error::NumberOverflow));
+        assert_eq!(parse_duration("1000000000000000000h"),
+            Err(Error::NumberOverflow));
+        assert_eq!(parse_duration("100000000000000000d"),
+            Err(Error::NumberOverflow));
+        assert_eq!(parse_duration("10000000000000000w"),
+            Err(Error::NumberOverflow));
+        assert_eq!(parse_duration("1000000000000000M"),
+            Err(Error::NumberOverflow));
+        assert_eq!(parse_duration("10000000000000y"),
+            Err(Error::NumberOverflow));
     }
+
     #[test]
     fn test_nice_error_message() {
-        assert_eq!(
-            parse_duration("123").unwrap_err().to_string(),
-            "time unit needed, for example 123sec or 123ms"
-        );
-        assert_eq!(
-            parse_duration("10 months 1").unwrap_err().to_string(),
-            "time unit needed, for example 1sec or 1ms"
-        );
-        assert_eq!(
-            parse_duration("10nights").unwrap_err().to_string(),
+        assert_eq!(parse_duration("123").unwrap_err().to_string(),
+            "time unit needed, for example 123sec or 123ms");
+        assert_eq!(parse_duration("10 months 1").unwrap_err().to_string(),
+            "time unit needed, for example 1sec or 1ms");
+        assert_eq!(parse_duration("10nights").unwrap_err().to_string(),
             "unknown time unit \"nights\", supported units: \
             ns, us, ms, sec, min, hours, days, weeks, months, \
-            years (and few variations)"
-        );
+            years (and few variations)");
     }
-}
-#[cfg(test)]
-mod tests_rug_1 {
-    use super::*;
-    use std::time::Duration;
-    use crate::parse_duration;
-    #[test]
-    fn test_rug() {
-
-    extern crate bolero;
-    extern crate arbitrary;
-    bolero::check!()
-        .for_each(|rug_data| {
-            if let Ok((mut rug_fuzz_0)) = <(&str) as arbitrary::Arbitrary>::arbitrary(&mut arbitrary::Unstructured::new(rug_data)){
-
-        let p0: &str = rug_fuzz_0;
-        debug_assert_eq!(parse_duration(& p0), Ok(Duration::new(9420, 0)));
-             }
-});    }
-}
-#[cfg(test)]
-mod tests_rug_2 {
-    use super::*;
-    use std::time::Duration;
-    #[test]
-    fn test_format_duration() {
-
-    extern crate bolero;
-    extern crate arbitrary;
-    bolero::check!()
-        .for_each(|rug_data| {
-            if let Ok((mut rug_fuzz_0, mut rug_fuzz_1, mut rug_fuzz_2, mut rug_fuzz_3)) = <(u64, u32, u64, u32) as arbitrary::Arbitrary>::arbitrary(&mut arbitrary::Unstructured::new(rug_data)){
-
-        let val1 = Duration::new(rug_fuzz_0, rug_fuzz_1);
-        let val2 = Duration::new(rug_fuzz_2, rug_fuzz_3);
-        crate::duration::format_duration(val1);
-        crate::duration::format_duration(val2);
-             }
-});    }
-}
-#[cfg(test)]
-mod tests_rug_5 {
-    use super::*;
-    use crate::duration::OverflowOp;
-    #[test]
-    fn test_rug() {
-
-    extern crate bolero;
-    extern crate arbitrary;
-    bolero::check!()
-        .for_each(|rug_data| {
-            if let Ok((mut rug_fuzz_0, mut rug_fuzz_1)) = <(u64, u64) as arbitrary::Arbitrary>::arbitrary(&mut arbitrary::Unstructured::new(rug_data)){
-
-        let p0: u64 = rug_fuzz_0;
-        let p1: u64 = rug_fuzz_1;
-        <u64 as OverflowOp>::mul(p0, p1).unwrap_err();
-             }
-});    }
-}
-#[cfg(test)]
-mod tests_rug_6 {
-    use super::*;
-    use crate::duration::OverflowOp;
-    use crate::duration::Error;
-    #[test]
-    fn test_add() {
-
-    extern crate bolero;
-    extern crate arbitrary;
-    bolero::check!()
-        .for_each(|rug_data| {
-            if let Ok((mut rug_fuzz_0, mut rug_fuzz_1)) = <(u64, u64) as arbitrary::Arbitrary>::arbitrary(&mut arbitrary::Unstructured::new(rug_data)){
-
-        let p0: u64 = rug_fuzz_0;
-        let p1: u64 = rug_fuzz_1;
-        debug_assert_eq!(< u64 as OverflowOp > ::add(p0, p1), Ok(1500));
-             }
-});    }
-}
-#[cfg(test)]
-mod tests_rug_9 {
-    use super::*;
-    use crate::duration::{Parser, Error};
-    #[test]
-    fn test_rug() {
-
-    extern crate bolero;
-    extern crate arbitrary;
-    bolero::check!()
-        .for_each(|rug_data| {
-            if let Ok((mut rug_fuzz_0, mut rug_fuzz_1, mut rug_fuzz_2)) = <(u64, usize, usize) as arbitrary::Arbitrary>::arbitrary(&mut arbitrary::Unstructured::new(rug_data)){
-
-        let mut p0: Parser = unimplemented!();
-        let p1: u64 = rug_fuzz_0;
-        let p2: usize = rug_fuzz_1;
-        let p3: usize = rug_fuzz_2;
-        let result = p0.parse_unit(p1, p2, p3);
-        debug_assert!(result.is_ok());
-             }
-});    }
-}
-#[cfg(test)]
-mod tests_rug_11 {
-    use super::*;
-    use crate::{FormattedDuration, format_duration};
-    use std::time::Duration;
-    #[test]
-    fn test_rug() {
-
-    extern crate bolero;
-    extern crate arbitrary;
-    bolero::check!()
-        .for_each(|rug_data| {
-            if let Ok((mut rug_fuzz_0)) = <(u64) as arbitrary::Arbitrary>::arbitrary(&mut arbitrary::Unstructured::new(rug_data)){
-
-        let duration = Duration::from_secs(rug_fuzz_0);
-        let p0 = format_duration(duration);
-        <FormattedDuration>::get_ref(&p0);
-             }
-});    }
 }
